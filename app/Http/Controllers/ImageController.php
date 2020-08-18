@@ -22,12 +22,12 @@ class ImageController extends Controller
         $validated = $request->validated();
         $uuid      = $validated['uuid'];
         $formats   = ['jpeg','jpg', 'png', 'bmp', 'gif', 'svg', 'webp'];
-        $url       = '';
         foreach ($formats as $format) {
             if (Storage::disk('local_photos')->exists($uuid.'.'.$format)) {
                 return ['status' => 'NOT_PROCESSED'];
             }
             if (Storage::disk('public_photos')->exists($uuid.'.'.$format)) {
+                $url = '/storage/photos/'.$uuid.'.'.$format;
                 return ['status' => 'PROCESSED','url' => $url];
             }
         }

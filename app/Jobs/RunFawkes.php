@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\Process\Process;
 
 class RunFawkes implements ShouldQueue
 {
@@ -25,6 +26,10 @@ class RunFawkes implements ShouldQueue
         //
     }
 
+    private static function deleteOldFiles($disk, $path, $files): void
+    {
+    }
+
     /**
      * Execute the job.
      *
@@ -34,20 +39,19 @@ class RunFawkes implements ShouldQueue
     {
         $local_photos_prefix  = Storage::disk('local_photos')->getAdapter()->getPathPrefix();
         $public_photos_prefix = Storage::disk('public_photos')->getAdapter()->getPathPrefix();
-        //Delete Old Photos
-        $files = Storage::disk('public_photos')->files();
-
-        foreach ($files as $file) {
-            if ($file === '.gitignore') {
-                continue;
+        //Run Fawkes Protection
+        echo("Starting fawkes\n");
+        $script  = \explode(' ', env('FAWKES_EXECUTABLE').$local_photos_prefix);
+        $process = new Process($script);
+        $process->setTimeout(3600);
+        $process->start();
+        $process->wait(static function ($type, $buffer): void {
+            if (Process::ERR === $type) {
+                echo($buffer);
+            } else {
+                echo($buffer);
             }
-            $fullpath   = $public_photos_prefix.$file;
-            $timepassed = \time() - File::lastModified($fullpath);
-            if ($timepassed > env('MINUTES_TO_STORE_FILES') * 60) {
-                Storage::disk('public_photos')->delete($file);
-            }
-        }
-
+        });
         //Move Processed Photos
         $files = Storage::disk('local_photos')->files();
 
@@ -67,13 +71,33 @@ class RunFawkes implements ShouldQueue
                 }
 
                 $pathSource      = $local_photos_prefix.$file;
-                $destinationPath = $public_photos_prefix.$file;
+                $destinationPath = $public_photos_prefix.$uuid.'.png';
 
                 File::move($pathSource, $destinationPath);
             }
         }
-        //Run Fawkes Protection
-        $script = env('FAWKES_EXECUTABLE').Storage::disk('local_photos')->getAdapter()->getPathPrefix();
-        \exec($script);
+
+        //Delete Original Photos
+        $files = Storage::disk('local_photos')->files();
+        foreach ($files as $file) {
+            if ($file === '.gitignore') {
+                continue;
+            }
+            $fullpath = $local_photos_prefix.$file;
+            Storage::disk('local_photos')->delete($file);
+        }
+
+        //Delete Old Photos
+        $files = Storage::disk('public_photos')->files();
+        foreach ($files as $file) {
+            if ($file === '.gitignore') {
+                continue;
+            }
+            $fullpath   = $public_photos_prefix.$file;
+            $timepassed = \time() - File::lastModified($fullpath);
+            if ($timepassed > env('MINUTES_TO_STORE_FILES') * 60) {
+                Storage::disk('public_photos')->delete($file);
+            }
+        }
     }
 }
